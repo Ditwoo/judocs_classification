@@ -1,0 +1,10 @@
+
+# loader.py:
+# parsing html pages
+beautifulsoup4
+
+
+# parser.py:
+# for parsing sentences
+nltk
+
