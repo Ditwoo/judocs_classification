@@ -16,6 +16,7 @@ FILE_TYPES = ['.html']
 
 
 class TitlePatterns:
+    exhibit_title = re.compile(r'^Exhibit\s\d+.\d+', re.M)
     # first group will be title
     upper_case_titles = re.compile(r'([A-Z ]+)\n', re.M)
     numbered_title = re.compile(r'\d+\.?\s+', re.M)
@@ -152,24 +153,91 @@ def list_positions(section_text: str) -> list:
     return positions
 
 
-def tag_positions(text: str) -> list:
-    positions = []
+def has_exhibit(text: str) -> bool:
+    return True if TitlePatterns.exhibit_title.search(text) else False
 
-    # get positions of sections
-    sect_positions = section_positions(text)
-    for s_start, s_end in sect_positions:
-        # remember opening position of section
-        positions.append((s_start, TAGS.SECTION.op()))
-        # get section substring and parse it
-        lst_positions = list_positions(text[s_start:s_end])
-        if lst_positions:
-            for l_start, l_end in lst_positions:
-                # remember opening position of list
-                positions.append((l_start + s_start, TAGS.LIST.op()))
+
+# TODO: add more flexible way of searching titles
+def tag_positions(text: str) -> list:
+    def get_title_pos(some_text: str) -> tuple:
+        """
+        Get start and end positions of text title
+
+        :param some_text: string
+        :return: begin and end positions of title
+        """
+        # working with files which has Exhibit at top
+        if has_exhibit(some_text):
+            # suppose that first not empty line after exhibit is title
+            return TitlePatterns.upper_case_titles.search(some_text).span(1)
+        return 0, 0
+
+    def get_list_positions(some_text: str) -> list:
+        """
+        Get list of positions of list elements in text with tags
+
+        :param some_text: string
+        :return: list of tuples where elements has structure (<index>, <tag>)
+        """
+        unwrapped_pos = []
+        list_pos = list_positions(some_text)
+        if list_pos:
+            for start, end in list_pos:
+                # remember opening and closing positions of list
+                unwrapped_pos.append((start, TAGS.LIST.op()))
+                unwrapped_pos.append((end, TAGS.LIST.cl()))
+        return unwrapped_pos
+
+    def get_sections_positions(some_text: str) -> list:
+        """
+        Get list of positions sections with lists in text with proper tag
+
+        :param some_text: string
+        :return: list of tuples where elements has structure (<index>, <tag>)
+        """
+        unwrapped_pos = []
+        section_pos = section_positions(some_text)
+        if section_pos:
+            for start, end in section_pos:
+                # remember opening positions of list
+                unwrapped_pos.append((start, TAGS.SECTION.op()))
+                # search for list in section
+                list_pos = get_list_positions(some_text[start:end])
+                if list_pos:
+                    list_pos = [(pos + start, tag) for pos, tag in list_pos]
+                unwrapped_pos.extend(list_pos)
                 # remember closing position of list
-                positions.append((l_end + s_start, TAGS.LIST.cl()))
-        # remember closing position of section
-        positions.append((s_end, TAGS.SECTION.cl()))
+                unwrapped_pos.append((end, TAGS.SECTION.cl()))
+        return unwrapped_pos
+
+    positions = []
+    title_start, title_end = get_title_pos(text)
+    if title_end:
+        # remember opening and closing positions of title
+        positions.append((title_start, TAGS.TITLE.op()))
+        positions.append((title_end, TAGS.TITLE.cl()))
+
+    text_without_title = text[title_end:] if title_end else text
+    sl_pos = get_sections_positions(text_without_title)
+    sl_pos = [(pos + title_end, tag)for pos, tag in sl_pos]
+
+    positions.extend(sl_pos)
+
+    # # get positions of sections
+    # sect_positions = section_positions(text)
+    # for s_start, s_end in sect_positions:
+    #     # remember opening position of section
+    #     positions.append((s_start, TAGS.SECTION.op()))
+    #     # get section substring and parse it
+    #     lst_positions = list_positions(text[s_start:s_end])
+    #     if lst_positions:
+    #         for l_start, l_end in lst_positions:
+    #             # remember opening position of list
+    #             positions.append((l_start + s_start, TAGS.LIST.op()))
+    #             # remember closing position of list
+    #             positions.append((l_end + s_start, TAGS.LIST.cl()))
+    #     # remember closing position of section
+    #     positions.append((s_end, TAGS.SECTION.cl()))
     return positions
 
 

@@ -1,6 +1,6 @@
 # Task
 
-Using data from [lawinsider](https://www.lawinsider.com) (samples of contracts) need to create clasifier which predict using sample paragraph (or major part of text) to which section of contract it belongs to.
+Using data from [lawinsider](https://www.lawinsider.com) (samples of contracts) need to create classifier which predict using sample paragraph (or major part of text) to which section of contract it belongs to.
 
 So here is __TODO__ list:
 
@@ -37,5 +37,4 @@ After runing this you will have in `clean` and `parsed` folders with __100__ par
 
 # Links
 
-* Data - [lawinsider.com](https://www.lawinsider.com)
-* python-docx [docs](http://python-docx.readthedocs.io/en/latest/dev/analysis/features/header.html)
+* Data - [lawinsider.com/education](https://www.lawinsider.com/education)
