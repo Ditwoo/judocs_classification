@@ -1,6 +1,8 @@
 import os
 import re
 import sys
+import queue
+import docx2txt
 import nltk.data
 from bs4 import BeautifulSoup
 
@@ -9,39 +11,54 @@ from bs4 import BeautifulSoup
 # this unpacked folder need to pass to DATA_FOLDER
 
 # default params for execute
-DATA_FOLDER = ''
-PARSED_DATA_FOLDER = 'parsed_data'
+DATA_FOLDER, PARSED_DATA_FOLDER = '', 'parsed_data'
 DATA_SIZE = 10
-FILE_TYPES = ['.html']
+FILE_TYPES = ['.docx', '.html']
 
 
 class TitlePatterns:
-    exhibit_title = re.compile(r'^Exhibit\s\d+.\d+', re.M)
+    exhibit_title = re.compile(r'^Exhibit\s\d+.\d+',
+                               re.MULTILINE | re.VERBOSE)
     # first group will be title
-    upper_case_titles = re.compile(r'([A-Z ]+)\n', re.M)
-    numbered_title = re.compile(r'\d+\.?\s+', re.M)
+    upper_case_titles = re.compile(r'([A-Z ]+\.?)\n',
+                                   re.MULTILINE)
+    numbered_title = re.compile(r'\d+\.?\s+',
+                                re.MULTILINE | re.VERBOSE)
     # <number>.<white spaces>[A-Z][<not end of sentence char>][<end of sentence char>]
-    numbered_title_with_first_sentence = re.compile(r'\d+\.\s+([A-Z][^\.!?]*[\.!?])', re.M)
+    numbered_title_with_first_sentence = re.compile(r'\d+\.\s+([A-Z][^\.!?]*[\.!?])',
+                                                    re.MULTILINE | re.VERBOSE)
+    first_line_title = re.compile(r'^(\ufeff?[\w ]+)[^.]?\n')
 
 
 class SectionPatterns:
     # first group will be title
-    captioned_section_with_some_text = re.compile(r'^(SECTION\s.+)', re.M)  # SECTION <some text>
+    captioned_section_with_some_text = re.compile(r'^(SECTION\s.+)',  # SECTION <some text>
+                                                  re.MULTILINE | re.VERBOSE)
+    line_without_point_at_end = re.compile(r'^([\w ]+)[^.]\n',
+                                           re.MULTILINE | re.VERBOSE)
 
 
 class ListPatterns:
     # this lists probably can be sections
     # first group will contain number
-    num_with_point = re.compile(r'^\s*?(\d+\.).', re.M)  # <number>.
-    num_with_bracket = re.compile(r'^\s*?(\d+\))', re.M)  # <number>)
-    char_with_point = re.compile(r'^\s*?([A-Z]+\.)', re.M)  # <char>.
-    char_with_bracket = re.compile(r'^\s*?([A-Z]+\.)', re.M)  # <char>)
+    num_with_point = re.compile(r'^\s*?(\d+\.).',  # <number>.
+                                re.MULTILINE)
+    num_with_bracket = re.compile(r'^\s*?(\d+\))',  # <number>)
+                                  re.MULTILINE)
+    char_with_point = re.compile(r'^\s*?([A-Z]+\.)',  # <char>.
+                                 re.MULTILINE)
+    char_with_bracket = re.compile(r'^\s*?([A-Z]+\.)',  # <char>)
+                                   re.MULTILINE)
+    pointed = re.compile(r'^\s*?(•.+)',  # • some text
+                         re.MULTILINE | re.VERBOSE)
 
 
 class SubListPatterns:
-    bracketed_list = re.compile(r'\([A-z\d]+\)', re.M)  # (<number or chars>)
+    bracketed_list = re.compile(r'\([A-z\d]+\)',
+                                re.MULTILINE)  # (<number or chars>)
     # first group of list_with_points will contain number
-    list_with_points = re.compile(r'\s(\d+\.[\d+\.+]+)', re.M)  # <number>. ... .<number>
+    list_with_points = re.compile(r'\s(\d+\.[\d+\.+]+)', # <number>. ... .<number>
+                                  re.MULTILINE)
 
 
 class Tag:
@@ -56,7 +73,7 @@ class Tag:
         # \033[4m       (underlined)
         # \033[1m       (bold)
         self.__tag_name = name
-        self.__color = color
+        self.set_color(color)
 
     def op(self) -> str:
         return self.__color + '<' + self.__tag_name + '>' + self.__reset_color
@@ -65,9 +82,14 @@ class Tag:
         return self.__color + '</' + self.__tag_name + '>' + self.__reset_color
 
     def set_color(self, color: str):
-        self.__color = color
-        self.__reset_color = '\033[0m'
-    
+        if color:
+            self.__color = color
+            self.__reset_color = '\033[0m'
+
+    def disable_color(self):
+        self.__color = ''
+        self.__reset_color = ''
+
     @staticmethod
     def wrap(text: str, tag) -> str:
         return tag.op() + text + tag.cl()
@@ -78,13 +100,22 @@ class FileTags:
     LIST_ITEM = Tag('list item')
     SECTION = Tag('section')
     TITLE = Tag('title')
-    
+
     def __init__(self, *, enable_colors=False):
         if enable_colors:
-            self.LIST.set_color('\033[92m\033[4m')  # green and underlined
-            self.LIST_ITEM.set_color('\033[92m')  # green
-            self.SECTION.set_color('\033[93m')  # yellow
-            self.TITLE.set_color('\033[91m\033[1m')  # red and bold
+            self.enable_colors()
+
+    def enable_colors(self):
+        self.LIST.set_color('\033[92m\033[4m')  # green and underlined
+        self.LIST_ITEM.set_color('\033[92m')  # green
+        self.SECTION.set_color('\033[93m')  # yellow
+        self.TITLE.set_color('\033[91m\033[1m')  # red and bold
+
+    def disable_colors(self):
+        self.LIST.disable_color()
+        self.LIST_ITEM.disable_color()
+        self.SECTION.disable_color()
+        self.TITLE.disable_color()
 
 
 TAGS = FileTags(enable_colors=False)
@@ -95,7 +126,10 @@ def section_positions(text: str) -> list:
     positions = []
     pattern = None
 
-    if SectionPatterns.captioned_section_with_some_text.search(text):
+    if SectionPatterns.line_without_point_at_end.search(text):
+        # <some text without point at end of line>
+        pattern = SectionPatterns.line_without_point_at_end
+    elif SectionPatterns.captioned_section_with_some_text.search(text):
         # SECTION <some text>
         pattern = SectionPatterns.captioned_section_with_some_text
     elif TitlePatterns.upper_case_titles.search(text):
@@ -111,7 +145,8 @@ def section_positions(text: str) -> list:
         return positions
 
     match_pos = [item.start(1) for item in pattern.finditer(text)]
-    match_pos.append(len(text) - 1)  # suppose that last section ends when ends file
+    # suppose that last section ends when ends file
+    match_pos.append(len(text) - 1)
 
     positions = list(zip(match_pos[:-1], match_pos[1:]))
     #  The same as lower line:
@@ -124,7 +159,10 @@ def list_positions(section_text: str) -> list:
     positions = []
     pattern = None
 
-    if ListPatterns.num_with_point.search(section_text):
+    if ListPatterns.pointed.search(section_text):
+        # • some text
+        pattern = ListPatterns.pointed
+    elif ListPatterns.num_with_point.search(section_text):
         # <number>. <text>
         pattern = ListPatterns.num_with_point
     elif ListPatterns.num_with_bracket.search(section_text):
@@ -157,6 +195,10 @@ def has_exhibit(text: str) -> bool:
     return True if TitlePatterns.exhibit_title.search(text) else False
 
 
+def has_first_line_as_title(text: str) -> bool:
+    return True if TitlePatterns.first_line_title.search(text) else False
+
+
 # TODO: add more flexible way of searching titles
 def tag_positions(text: str) -> list:
     def get_title_pos(some_text: str) -> tuple:
@@ -166,10 +208,16 @@ def tag_positions(text: str) -> list:
         :param some_text: string
         :return: begin and end positions of title
         """
+
         # working with files which has Exhibit at top
         if has_exhibit(some_text):
             # suppose that first not empty line after exhibit is title
             return TitlePatterns.upper_case_titles.search(some_text).span(1)
+        # working with files which has first line which looks like title
+        elif has_first_line_as_title(text):
+            # suppose that first line is title
+            return TitlePatterns.first_line_title.search(some_text).span(1)
+
         return 0, 0
 
     def get_list_positions(some_text: str) -> list:
@@ -309,8 +357,10 @@ def parse_raw_text(text: str) -> str:
 
     for i in range(len(text)):
         while tt_pos < len(text_tags) and i == text_tags[tt_pos][0]:
+            # case of two tags at same position
             if text_tags[tt_pos][0] == text_tags[tt_pos - 1][0]:
                 tagged_text += text_tags[tt_pos][1] + '\n'
+            # otherwise
             else:
                 tagged_text += '\n' + text_tags[tt_pos][1] + '\n'
             tt_pos += 1
@@ -321,118 +371,161 @@ def parse_raw_text(text: str) -> str:
 
 def read_text(filename: str) -> str:
     """
-    Read text from .txt or .html
+    Read text from files with extensions .txt, .html or .docx.
+
     :param filename: string
     :return: string with readable text.
     """
-    content = ''
-    text = ''
-    # getting file content
-    with open(filename, 'r', encoding='utf-8') as input_file:
-        content = input_file.read()
-    # geting cute text from .html
+
+    # getting cute text from .html
     if filename.endswith('.html'):
+        # getting file content
+        with open(filename, 'r', encoding='utf-8') as input_file:
+            content = input_file.read()
         soup = BeautifulSoup(content, 'html.parser')
         text = soup.get_text()
+
+    elif filename.endswith('.docx'):
+        text = docx2txt.process(filename)
+
     else:
+        # getting file content
+        with open(filename, 'r', encoding='utf-8') as input_file:
+            content = input_file.read()
         text = content
     return text
 
 
-def parse_file(filename: str) -> tuple:
+def get_files_in_folder(data_folder: str,
+                        file_extensions: list,
+                        count_of_files: int = -1) -> list:
     """
-    Parsing existing file.
+    Get all files with extensions from folder(and all subfolders).
+
+    :param data_folder: str, path to folder
+    :param file_extensions: list of strings
+    :param count_of_files: int, max size of output list of files, in case -1 return all files
+    :return: list of files which have specific extensions
     """
-    raw_text = read_text(filename)
-    # invoke parser
-    marked_text = parse_raw_text(raw_text)
-    return raw_text, marked_text
+    # check for existing folder 
+    if not os.path.isdir(data_folder):
+        raise FileNotFoundError
 
+    def is_valid_file(extensions, filename):
+        """
+        Checks does filename matches extensions.
+        """
+        for f_ext in extensions:
+            if filename.endswith(f_ext):
+                return True
+        return False
 
-def get_path_to_data_files(data_folder: str,
-                           file_endings: list,
-                           max_list_size: int) -> list:
-    # Parsing data folder which has structure like:
-    #
-    #       <data-folder>/
-    #         <upper-folder>/
-    #             <middle-folder_>/
-    #                 some-file.html
-    #                 some-file.json
-    #                 ...
-    #             ...
-    #         ...
-    #
-    files_list = []
-    for file_in_data in os.listdir(data_folder):
-        # parsing upper folders
-        upper_folder = os.path.join(data_folder, file_in_data)
-        if os.path.isdir(upper_folder):
-            for file_in_upper in os.listdir(upper_folder):
-                # parsing middle folders
-                middle_folder = os.path.join(upper_folder, file_in_upper)
-                if os.path.isdir(middle_folder):
-                    for filename in os.listdir(middle_folder):
-                        # looking for acceptable files
-                        for file_ending in file_endings:
-                            if filename.endswith(file_ending) and len(
-                                    files_list) < max_list_size:
-                                path_to_file = os.path.join(
-                                    middle_folder, filename)
-                                files_list.append(path_to_file)
-    return files_list
+    subfolders = queue.Queue()
+    subfolders.put(data_folder)
+    files = []
+    while not subfolders.empty():
+        curr_folder = subfolders.get()
+        for f in os.listdir(curr_folder):
+            full_f = os.path.join(curr_folder, f)
+            # case f is folder
+            if os.path.isdir(full_f):
+                subfolders.put(full_f)
+            # case f is some file
+            if is_valid_file(file_extensions, f):
+                files.append(full_f)
+            # checks if files list is overfilled
+            if count_of_files:
+                if len(files) == count_of_files:
+                    return files
+    return files
 
 
 def main(*args):
-    global DATA_FOLDER
-    global DATA_SIZE
-    # case call <script>
-    if len(args) == 1:
+    def print_faq():
         print('\nScript usage:')
         print('\t<script name> <data folder> <count of files>\n')
         print('Example')
         print('python3 parser.py data\n')
-    # case call <script> <data folder> <count of files>
-    if len(args) == 3:
-        DATA_FOLDER = args[1]
-        DATA_SIZE = int(args[2])
 
-        paths_to_data_files = get_path_to_data_files(data_folder=DATA_FOLDER,
-                                                     file_endings=FILE_TYPES,
-                                                     max_list_size=DATA_SIZE)
+    def parse_one_file(filename, *, to_file=''):
+        global TAGS
+        # parsing file
+        text = read_text(filename)
+        parsed_text = parse_raw_text(text)
+        if to_file:
+            # saving to file
+
+            with open(to_file, 'w', encoding='utf-8') as out_file:
+                out_file.write(parsed_text)
+        else:
+            print(parsed_text)
+
+    def parse_folder(foldername, filetypes, size, output_folder):
+        paths_to_data_files = get_files_in_folder(foldername, filetypes, size)
 
         # check for existing parsed data folder
-        if not os.path.exists(PARSED_DATA_FOLDER):
-            os.makedirs(PARSED_DATA_FOLDER)
+        if not os.path.exists(output_folder):
+            os.makedirs(output_folder)
+
         # create folder for clean texts
-        CLEAN_FOLDER = os.path.join(PARSED_DATA_FOLDER, 'clean')
-        if not os.path.exists(CLEAN_FOLDER):
-            os.makedirs(CLEAN_FOLDER)
+        output_clean = os.path.join(output_folder, 'clean')
+        if not os.path.exists(output_clean):
+            os.makedirs(output_clean)
+
         # create folder for parsed texts
-        PARSED_FOLDER = os.path.join(PARSED_DATA_FOLDER, 'parsed')
-        if not os.path.exists(PARSED_FOLDER):
-            os.makedirs(PARSED_FOLDER)
+        output_parsed = os.path.join(output_folder, 'parsed')
+        if not os.path.exists(output_parsed):
+            os.makedirs(output_parsed)
 
         # parsing files
-        print('Parsing {} files from {} :'.format(DATA_SIZE, DATA_FOLDER))
-        for filepath in paths_to_data_files:
-            print('  [*]', filepath.rsplit('/', 1)[1])
+        print('Parsing {} files from \'{}\' to \'{}\':'.format(size if size > 0 else 'all',
+                                                               foldername,
+                                                               output_folder))
+        for path_to_file in paths_to_data_files:
+            print('  [*]', path_to_file.rsplit('/', 1)[1])
+
+            # remove path from file
+            _, filename = path_to_file.rsplit('/', 1)
+            # remove extension (for example '.html' or '.docx')
+            filename, _ = filename.split('.', 1)
+            filename += '.txt'
             try:
-                clean_text, parsed_text = parse_file(filepath)
+                # working with clean file
+                path_to_clean = os.path.join(output_clean, filename)
+                clean_text = read_text(path_to_file)
+                # saving clean file
+                with open(path_to_clean, 'w', encoding='utf-8') as out_file:
+                    out_file.write(clean_text)
+
+                # working with parsed file
+                path_to_parsed = os.path.join(output_parsed, filename)
+                parse_one_file(path_to_clean, to_file=path_to_parsed)
             except Exception as e:
                 print('[!]', e)
                 continue
 
-            # remove path to file
-            _, fname = filepath.rsplit('/', 1)
-            # remove .html
-            fname, _ = fname.split('.', 1)
-            fname += '.txt'
-            # saving files to folders
-            with open(os.path.join(CLEAN_FOLDER, fname), 'w') as out_file:
-                out_file.write(clean_text)
-            with open(os.path.join(PARSED_FOLDER, fname), 'w') as out_file:
-                out_file.write(parsed_text)
+    global DATA_FOLDER
+    global DATA_SIZE
+    global PARSED_DATA_FOLDER
+    # case call <script>
+    if len(args) == 1:
+        print_faq()
+    # case call <script> <file or folder>
+    elif len(args) == 2:
+        target = args[1]
+        # case
+        if os.path.isdir(target):
+            DATA_FOLDER = target
+            tmp = DATA_FOLDER.split('/', 1)
+            PARSED_DATA_FOLDER = tmp[0] + '/parsed_' + tmp[1]
+            DATA_SIZE = -1  # parse all file in folder
+            parse_folder(DATA_FOLDER, FILE_TYPES, DATA_SIZE, PARSED_DATA_FOLDER)
+        else:
+            parse_one_file(filename=args[1])
+    # case call <script> <data folder> <count of files>
+    elif len(args) == 3:
+        DATA_FOLDER, DATA_SIZE = args[1], int(args[2])
+        parse_folder(DATA_FOLDER, FILE_TYPES, DATA_SIZE, PARSED_DATA_FOLDER)
 
 
 if __name__ == '__main__':

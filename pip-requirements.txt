@@ -7,4 +7,5 @@ beautifulsoup4
 # parser.py:
 # for parsing sentences
 nltk
+docx2txt
 

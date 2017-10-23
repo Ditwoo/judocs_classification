@@ -1,8 +1,16 @@
+# folders
 __pycache__/
-parsed_data/
-tests/
 .ipynb_checkpoints/
+.ropeproject/
+data/
+tests/
 
+# files
+reader.py
+
+# files with extension or system files
 *.DS_Store
 *.idea
-*.ropeproject
+*.txt
+*.docx
+*.html
