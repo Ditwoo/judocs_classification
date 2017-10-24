@@ -251,7 +251,7 @@ def get_files_in_folder(data_folder: str,
     :param count_of_files: int, max size of output list of files, in case -1 return all files
     :return: list of files which have specific extensions
     """
-    # check for existing folder 
+    # check for existing folder
     if not os.path.isdir(data_folder):
         raise FileNotFoundError
 
@@ -322,9 +322,8 @@ def main(*args):
             os.makedirs(output_parsed)
 
         # parsing files
-        print('Parsing {} files from \'{}\' to \'{}\':'.format(size if size > 0 else 'all',
-                                                               foldername,
-                                                               output_folder))
+        print('Parsing {} files from \'{}\' to \'{}\':'.format(
+            size if size > 0 else 'all', foldername, output_folder))
         for path_to_file in paths_to_data_files:
             print('  [*]', path_to_file.rsplit('/', 1)[1])
 
@@ -359,14 +358,21 @@ def main(*args):
         target = args[1]
         # case
         if os.path.isdir(target):
-            DATA_FOLDER, PARSED_DATA_FOLDER = target, os.path.join(target, PARSED_DATA_FOLDER)
+            DATA_FOLDER, PARSED_DATA_FOLDER = target, os.path.join(
+                target, PARSED_DATA_FOLDER)
             DATA_SIZE = -1  # parse all file in folder
-            parse_folder(DATA_FOLDER, FILE_TYPES, DATA_SIZE, PARSED_DATA_FOLDER)
+            parse_folder(
+                DATA_FOLDER,
+                FILE_TYPES,
+                DATA_SIZE,
+                PARSED_DATA_FOLDER)
         else:
             parse_one_file(filename=args[1])
     # case call <script> <data folder> <count of files>
     elif len(args) == 3:
-        DATA_FOLDER, DATA_SIZE = args[1], int(args[2])
+        DATA_FOLDER, PARSED_DATA_FOLDER = args[1], os.path.join(
+            args[1], PARSED_DATA_FOLDER)
+        DATA_SIZE = int(args[2])
         parse_folder(DATA_FOLDER, FILE_TYPES, DATA_SIZE, PARSED_DATA_FOLDER)
 
 
