@@ -7,13 +7,12 @@ import nltk.data
 from bs4 import BeautifulSoup
 
 # All data loaded from lawinsider.com
-# contracts link: https://www.lawinsider.com/education
-# this unpacked folder need to pass to DATA_FOLDER
+# contracts link: https://www.lawinsider.com/educations
 
 # default params for execute
 DATA_FOLDER, PARSED_DATA_FOLDER = '', 'parsed_data'
 DATA_SIZE = 10
-FILE_TYPES = ['.docx', '.html']
+FILE_TYPES = ['.docx', '.txt']
 
 
 class Tag:
@@ -360,9 +359,7 @@ def main(*args):
         target = args[1]
         # case
         if os.path.isdir(target):
-            DATA_FOLDER = target
-            tmp = DATA_FOLDER.split('/', 1)
-            PARSED_DATA_FOLDER = tmp[0] + '/parsed_' + tmp[1]
+            DATA_FOLDER, PARSED_DATA_FOLDER = target, os.path.join(target, PARSED_DATA_FOLDER)
             DATA_SIZE = -1  # parse all file in folder
             parse_folder(DATA_FOLDER, FILE_TYPES, DATA_SIZE, PARSED_DATA_FOLDER)
         else:
