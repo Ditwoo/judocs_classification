@@ -16,51 +16,6 @@ DATA_SIZE = 10
 FILE_TYPES = ['.docx', '.html']
 
 
-class TitlePatterns:
-    exhibit_title = re.compile(r'^Exhibit\s\d+.\d+',
-                               re.MULTILINE | re.VERBOSE)
-    # first group will be title
-    upper_case_titles = re.compile(r'([A-Z ]+\.?)\n',
-                                   re.MULTILINE)
-    numbered_title = re.compile(r'\d+\.?\s+',
-                                re.MULTILINE | re.VERBOSE)
-    # <number>.<white spaces>[A-Z][<not end of sentence char>][<end of sentence char>]
-    numbered_title_with_first_sentence = re.compile(r'\d+\.\s+([A-Z][^\.!?]*[\.!?])',
-                                                    re.MULTILINE | re.VERBOSE)
-    first_line_title = re.compile(r'^(\ufeff?[\w ]+)[^.]?\n')
-
-
-class SectionPatterns:
-    # first group will be title
-    captioned_section_with_some_text = re.compile(r'^(SECTION\s.+)',  # SECTION <some text>
-                                                  re.MULTILINE | re.VERBOSE)
-    line_without_point_at_end = re.compile(r'^([\w ]+)[^.]\n',
-                                           re.MULTILINE | re.VERBOSE)
-
-
-class ListPatterns:
-    # this lists probably can be sections
-    # first group will contain number
-    num_with_point = re.compile(r'^\s*?(\d+\.).',  # <number>.
-                                re.MULTILINE)
-    num_with_bracket = re.compile(r'^\s*?(\d+\))',  # <number>)
-                                  re.MULTILINE)
-    char_with_point = re.compile(r'^\s*?([A-Z]+\.)',  # <char>.
-                                 re.MULTILINE)
-    char_with_bracket = re.compile(r'^\s*?([A-Z]+\.)',  # <char>)
-                                   re.MULTILINE)
-    pointed = re.compile(r'^\s*?(•.+)',  # • some text
-                         re.MULTILINE | re.VERBOSE)
-
-
-class SubListPatterns:
-    bracketed_list = re.compile(r'\([A-z\d]+\)',
-                                re.MULTILINE)  # (<number or chars>)
-    # first group of list_with_points will contain number
-    list_with_points = re.compile(r'\s(\d+\.[\d+\.+]+)', # <number>. ... .<number>
-                                  re.MULTILINE)
-
-
 class Tag:
     __color = ''
     __reset_color = ''
@@ -121,172 +76,90 @@ class FileTags:
 TAGS = FileTags(enable_colors=False)
 
 
-# TODO: very naive to suppose that end of text is the end of last section
-def section_positions(text: str) -> list:
-    positions = []
-    pattern = None
+# MAGIC METHOD
+def tag_positions(text: str) -> tuple:
+    """
+    Generate list of tags positions and lines which match these tags.
 
-    if SectionPatterns.line_without_point_at_end.search(text):
-        # <some text without point at end of line>
-        pattern = SectionPatterns.line_without_point_at_end
-    elif SectionPatterns.captioned_section_with_some_text.search(text):
-        # SECTION <some text>
-        pattern = SectionPatterns.captioned_section_with_some_text
-    elif TitlePatterns.upper_case_titles.search(text):
-        # UPPERCASE TITLES
-        pattern = TitlePatterns.upper_case_titles
-    elif ListPatterns.num_with_point.search(text):
-        # <number>. <text>
-        pattern = ListPatterns.num_with_point
-    elif ListPatterns.num_with_bracket.search(text):
-        # <number>) <text>
-        pattern = ListPatterns.num_with_bracket
-    else:
-        return positions
+    :param text: str, which will used for searching tags
+    :return: tuple of lists
+    """
 
-    match_pos = [item.start(1) for item in pattern.finditer(text)]
-    # suppose that last section ends when ends file
-    match_pos.append(len(text) - 1)
+    text_lines = text.splitlines()
 
-    positions = list(zip(match_pos[:-1], match_pos[1:]))
-    #  The same as lower line:
-    #  positions = [(match_pos[i], match_pos[i + 1]) for i in range(len(match_pos) - 1)]
-    return positions
+    TITLE = re.compile(r'^\ufeff?([\w ]+)[^.]?')
+    EXHIBIT = re.compile(r'^\ufeff?Exhibit.+$')
+    EMPTY_LINE = re.compile(r'^\s*$')
+    SECTION = re.compile(r'^[A-Z][A-z ]+[^.]?$')
+    LIST = re.compile(r'^\s*(\d+\.?\)?|\w+\.?\)|\(\w+\)|•).*$', re.VERBOSE)
 
+    def same_types_of_list(first, second):
+        f_type, s_type = '', ''
 
-# TODO: fix problem of list endings
-def list_positions(section_text: str) -> list:
-    positions = []
-    pattern = None
+        if re.match(r'\d+\.?\)?', first):
+            f_type = r'\d+\.?\)?'
+        elif re.match(r'\w+\.?\)', first):
+            f_type = r'\w+\.?\)'
+        elif re.match(r'\(\w+\)', first):
+            f_type = r'\(\w+\)'
+        elif re.match(r'•', first):
+            f_type = r'•'
 
-    if ListPatterns.pointed.search(section_text):
-        # • some text
-        pattern = ListPatterns.pointed
-    elif ListPatterns.num_with_point.search(section_text):
-        # <number>. <text>
-        pattern = ListPatterns.num_with_point
-    elif ListPatterns.num_with_bracket.search(section_text):
-        # <number>) <text>
-        pattern = ListPatterns.num_with_bracket
-    elif ListPatterns.char_with_point.search(section_text):
-        # <char>. <text>
-        pattern = ListPatterns.char_with_point
-    elif ListPatterns.char_with_bracket.search(section_text):
-        # <char>) <text>
-        pattern = ListPatterns.char_with_bracket
-    else:
-        return positions
+        if re.match(r'\d+\.?\)?', second):
+            s_type = r'\d+\.?\)?'
+        elif re.match(r'\w+\.?\)', second):
+            s_type = r'\w+\.?\)'
+        elif re.match(r'\(\w+\)', second):
+            s_type = r'\(\w+\)'
+        elif re.match(r'•', second):
+            s_type = r'•'
 
-    match_pos = [item.start(1) for item in pattern.finditer(section_text)]
-    # get position of last index start
-    last_list_item_pos = match_pos[-1]
-    # get subtext from previous position
-    subtext = section_text[last_list_item_pos:]
-    # suppose that first paragraph is the end of list
-    first_paragraph_in_list_item = subtext.split('\n\n')[0]
-    # add end of list
-    match_pos.append(last_list_item_pos + len(first_paragraph_in_list_item))
+        return f_type == s_type and f_type != ''
 
-    positions = list(zip(match_pos[:-1], match_pos[1:]))
-    return positions
+    # first - type of tag, second - tag info
+    flags = [('', '') for _ in text_lines]
+    title_pos = 0
 
+    # check that file has 'Exhibit' line
+    if EXHIBIT.match(text_lines[title_pos]):
+        title_pos += 1
+        while EMPTY_LINE.match(text_lines[title_pos]):
+            title_pos += 1
+        flags[title_pos] = ('t', '')
+        title_pos += 1
+    # check that first line of file has title
+    elif TITLE.match(text_lines[title_pos]):
+        flags[title_pos] = ('t', '')
+        title_pos += 1
 
-def has_exhibit(text: str) -> bool:
-    return True if TitlePatterns.exhibit_title.search(text) else False
+    # try to search another tags after title position
+    for i in range(title_pos, len(text_lines)):
+        line = text_lines[i]
+        # in case of empty line or line with whitespaces
+        if len(line) == 0 or EMPTY_LINE.match(line):
+            continue
+        elif SECTION.match(line) and line.isupper():
+            flags[i] = ('s', '')
+        elif LIST.match(line):
+            tmp = LIST.match(line).group(1)
+            flags[i] = ('l', tmp)
 
+    # remove mismatched sections inside of lists
+    for i in range(1, len(flags) - 1):
+        flag, item_type = flags[i]
 
-def has_first_line_as_title(text: str) -> bool:
-    return True if TitlePatterns.first_line_title.search(text) else False
-
-
-# TODO: add more flexible way of searching titles
-def tag_positions(text: str) -> list:
-    def get_title_pos(some_text: str) -> tuple:
-        """
-        Get start and end positions of text title
-
-        :param some_text: string
-        :return: begin and end positions of title
-        """
-
-        # working with files which has Exhibit at top
-        if has_exhibit(some_text):
-            # suppose that first not empty line after exhibit is title
-            return TitlePatterns.upper_case_titles.search(some_text).span(1)
-        # working with files which has first line which looks like title
-        elif has_first_line_as_title(text):
-            # suppose that first line is title
-            return TitlePatterns.first_line_title.search(some_text).span(1)
-
-        return 0, 0
-
-    def get_list_positions(some_text: str) -> list:
-        """
-        Get list of positions of list elements in text with tags
-
-        :param some_text: string
-        :return: list of tuples where elements has structure (<index>, <tag>)
-        """
-        unwrapped_pos = []
-        list_pos = list_positions(some_text)
-        if list_pos:
-            for start, end in list_pos:
-                # remember opening and closing positions of list
-                unwrapped_pos.append((start, TAGS.LIST.op()))
-                unwrapped_pos.append((end, TAGS.LIST.cl()))
-        return unwrapped_pos
-
-    def get_sections_positions(some_text: str) -> list:
-        """
-        Get list of positions sections with lists in text with proper tag
-
-        :param some_text: string
-        :return: list of tuples where elements has structure (<index>, <tag>)
-        """
-        unwrapped_pos = []
-        section_pos = section_positions(some_text)
-        if section_pos:
-            for start, end in section_pos:
-                # remember opening positions of list
-                unwrapped_pos.append((start, TAGS.SECTION.op()))
-                # search for list in section
-                list_pos = get_list_positions(some_text[start:end])
-                if list_pos:
-                    list_pos = [(pos + start, tag) for pos, tag in list_pos]
-                unwrapped_pos.extend(list_pos)
-                # remember closing position of list
-                unwrapped_pos.append((end, TAGS.SECTION.cl()))
-        return unwrapped_pos
-
-    positions = []
-    title_start, title_end = get_title_pos(text)
-    if title_end:
-        # remember opening and closing positions of title
-        positions.append((title_start, TAGS.TITLE.op()))
-        positions.append((title_end, TAGS.TITLE.cl()))
-
-    text_without_title = text[title_end:] if title_end else text
-    sl_pos = get_sections_positions(text_without_title)
-    sl_pos = [(pos + title_end, tag)for pos, tag in sl_pos]
-
-    positions.extend(sl_pos)
-
-    # # get positions of sections
-    # sect_positions = section_positions(text)
-    # for s_start, s_end in sect_positions:
-    #     # remember opening position of section
-    #     positions.append((s_start, TAGS.SECTION.op()))
-    #     # get section substring and parse it
-    #     lst_positions = list_positions(text[s_start:s_end])
-    #     if lst_positions:
-    #         for l_start, l_end in lst_positions:
-    #             # remember opening position of list
-    #             positions.append((l_start + s_start, TAGS.LIST.op()))
-    #             # remember closing position of list
-    #             positions.append((l_end + s_start, TAGS.LIST.cl()))
-    #     # remember closing position of section
-    #     positions.append((s_end, TAGS.SECTION.cl()))
-    return positions
+        if flag == 's':
+            # checking if marked 'i' as section between one list
+            upper, lower = i - 1, i + 1
+            while upper > 0:
+                _, upper_type = flags[upper]
+                while lower < len(flags):
+                    _, lower_type = flags[lower]
+                    if same_types_of_list(upper_type, lower_type):
+                        flags[i] = ('', '')
+                    lower += 1
+                upper -= 1
+    return flags, text_lines
 
 
 def tokenize_onto_sentences(text: str) -> list:
@@ -305,44 +178,7 @@ def tokenize_onto_sentences(text: str) -> list:
     return sentences
 
 
-# DEPRECATED
-def tokenize_onto_paragraphs(text: str) -> list:
-    """
-    WARNING this method is deprecated!
-    Split text onto paragraphs and add tags to this paragraphs if can.
-
-    :param text: string
-    :return: list of strings
-    """
-    # text constants
-    PARAGRAPH_PATTERN = re.compile(r'\s*?\n\s*?\n\s*?')
-    SECTION_PATTERN = re.compile(r'\d+\.?.*\.')
-    SUBLIST_PATTERN = re.compile(r'^\s?(\d+.\d+?\)?|\(.*\)).*')
-
-    # working with paragraphs
-    raw_paragraphs = [
-        item for item in re.split(
-            PARAGRAPH_PATTERN,
-            text) if item]
-    paragraphs = []
-    # merging lists into sections
-    is_ended_list = True
-    for item in raw_paragraphs:
-        if SUBLIST_PATTERN.match(item):
-            if is_ended_list:
-                paragraphs[-1] += '\n' + TAGS.LIST.op()
-                is_ended_list = False
-            paragraphs[-1] += '\n' + Tag.wrap(item, TAGS.LIST_ITEM)
-            continue
-        else:
-            if len(paragraphs) and paragraphs[-1].endswith(TAGS.LIST_ITEM.cl()):
-                paragraphs[-1] += '\n' + TAGS.LIST.cl() + '\n'
-            is_ended_list = True
-        paragraphs.append(item)
-
-    return paragraphs
-
-
+# MAGIC METHOD
 def parse_raw_text(text: str) -> str:
     """
     Parse text and add tags to it.
@@ -351,22 +187,31 @@ def parse_raw_text(text: str) -> str:
     :return: str with tags
     """
 
-    text_tags = tag_positions(text)
-    tt_pos = 0
-    tagged_text = ''
+    text_tags, lines = tag_positions(text)
+    i = 0
+    is_opened_section = False
+    while i < len(lines):
+        tag, modifier = text_tags[i]
 
-    for i in range(len(text)):
-        while tt_pos < len(text_tags) and i == text_tags[tt_pos][0]:
-            # case of two tags at same position
-            if text_tags[tt_pos][0] == text_tags[tt_pos - 1][0]:
-                tagged_text += text_tags[tt_pos][1] + '\n'
-            # otherwise
-            else:
-                tagged_text += '\n' + text_tags[tt_pos][1] + '\n'
-            tt_pos += 1
-        tagged_text += text[i]
+        if tag == 't':
+            lines[i] = Tag.wrap(lines[i], FileTags.TITLE)
+        elif tag == 'l':
+            lines[i] = Tag.wrap(lines[i], FileTags.LIST)
+        elif tag == 's':
+            if is_opened_section:
+                lines[i - 1] = lines[i - 1] + '\n' + FileTags.SECTION.cl()
+            # open new section tag
+            lines[i] = FileTags.SECTION.op() + '\n' + lines[i]
+            is_opened_section = not is_opened_section
 
-    return tagged_text
+        # close section at the end of file
+        if i + 1 == len(lines) and not is_opened_section:
+            lines[i] = lines[i] + '\n' + FileTags.SECTION.cl()
+
+        # increase counter
+        i += 1
+
+    return '\n'.join(lines)
 
 
 def read_text(filename: str) -> str:
