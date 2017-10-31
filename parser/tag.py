@@ -64,13 +64,9 @@ class FileTags:
 
     def enable_colors(self):
         self.LIST.set_color(BCOLORS.OKGREEN + BCOLORS.UNDERLINE)
-        # self.LIST.set_color('\033[92m\033[4m')  # green and underlined
         self.LIST_ITEM.set_color(BCOLORS.OKGREEN)
-        # self.LIST_ITEM.set_color('\033[92m')  # green
         self.SECTION.set_color(BCOLORS.WARNING)
-        # self.SECTION.set_color('\033[93m')  # yellow
         self.TITLE.set_color(BCOLORS.FAIL + BCOLORS.BOLD)
-        # self.TITLE.set_color('\033[91m\033[1m')  # red and bold
 
     def disable_colors(self):
         self.LIST.disable_color()
