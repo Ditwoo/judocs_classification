@@ -19,10 +19,14 @@ class Tag:
         self.set_color(color)
 
     def op(self) -> str:
-        return self.__color + '<' + self.__tag_name + '>' + self.__reset_color
+        return "{}<{}>{}".format(self.__color,
+                                 self.__tag_name,
+                                 self.__reset_color)
 
     def cl(self) -> str:
-        return self.__color + '</' + self.__tag_name + '>' + self.__reset_color
+        return "{}</{}>{}".format(self.__color,
+                                  self.__tag_name,
+                                  self.__reset_color)
 
     def set_color(self, color: str):
         if color:
@@ -53,10 +57,11 @@ class Tag:
 
 
 class FileTags:
-    LIST = Tag('list')
-    LIST_ITEM = Tag('list item')
+    LIST = Tag('l')
+    LIST_ITEM = Tag('le')
     SECTION = Tag('s')
     TITLE = Tag('title')
+    PLAIN_TEXT = Tag('p')
 
     def __init__(self, *, enable_colors=False):
         if enable_colors:
@@ -67,9 +72,11 @@ class FileTags:
         self.LIST_ITEM.set_color(BCOLORS.OKGREEN)
         self.SECTION.set_color(BCOLORS.WARNING)
         self.TITLE.set_color(BCOLORS.FAIL + BCOLORS.BOLD)
+        self.PLAIN_TEXT.set_color(BCOLORS.OKBLUE)
 
     def disable_colors(self):
         self.LIST.disable_color()
         self.LIST_ITEM.disable_color()
         self.SECTION.disable_color()
         self.TITLE.disable_color()
+        self.PLAIN_TEXT.disable_color()

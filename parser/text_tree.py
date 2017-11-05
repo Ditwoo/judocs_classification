@@ -7,27 +7,26 @@ class TextTree:
     parent = None
     subtrees = []
     # tree data
-    tag = None
-    left, right = 0, 0  # open and close tag positions
+    tag, op_pos, cl_pos = None, 0, 0
 
     def __init__(self, start_pos: int, end_pos: int, tag: Tag, parent=None):
         self.parent = parent
         self.subtrees = []
         # data
         self.tag = tag
-        self.left = start_pos
-        self.right = end_pos
+        self.op_pos = start_pos
+        self.cl_pos = end_pos
 
     def __str__(self):
         return "<tag={},left={},right={},subtrees_size={}>".format(str(self.tag),
-                                                                   self.left,
-                                                                   self.right,
+                                                                   self.op_pos,
+                                                                   self.cl_pos,
                                                                    len(self.subtrees))
 
     def __repr__(self):
         subtrees_text = ",".join(str(item.tag) for item in self.subtrees)
         repr_text = "<tag{},left={},right={},subtrees=[{}]>".format(str(self.tag),
-                                                                    self.left, self.right,
+                                                                    self.op_pos, self.cl_pos,
                                                                     subtrees_text)
         return repr_text
 
@@ -39,7 +38,7 @@ class TextTree:
         while not nodes.empty():
             node = nodes.get()
             if node.tag == tag:
-                positions.append((node.left, node.right))
+                positions.append((node.op_pos, node.cl_pos))
             for item in node.subtrees:
                 nodes.put(item)
         return positions
@@ -56,8 +55,8 @@ class TextTree:
         def print_tag(t: TextTree):
             current_tag = str(t.tag) if t.tag else "File"
             print("~> {tag} ({left} - {right})".format(tag=current_tag,
-                                                       left=t.left,
-                                                       right=t.right))
+                                                       left=t.op_pos,
+                                                       right=t.cl_pos))
 
         def recursive(t):
             if not t or not isinstance(t, TextTree):
@@ -67,11 +66,11 @@ class TextTree:
                 TextTree.in_order(item)
 
         def non_recursive(t):
-            if not tree or not isinstance(tree, TextTree):
+            if not t or not isinstance(t, TextTree):
                 return
 
             nodes_queue = Queue()
-            nodes_queue.put(tree)
+            nodes_queue.put(t)
 
             while not nodes_queue.empty():
                 node = nodes_queue.get()
@@ -108,7 +107,7 @@ def build_tree(tags: list):
                 current = tmp
             # close tag
             if is_closed:
-                current.right = i
+                current.cl_pos = i
                 current = current.parent
         i += 1
     return tree
