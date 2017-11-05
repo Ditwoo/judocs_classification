@@ -118,8 +118,7 @@ def tag_positions(text: str) -> tuple:
         :return:
         """
 
-        # list of tuples, which has structure like:
-        # (is open tag (true - 1, false - 0), is closed tag (true - 1, false - 0), tag)
+        # list of tuples, where each element has structure - (<bit flags>, <tag>)
         pretty = [(0, '') for _ in tags]
         tag_pos, tags_size = 0, len(tags)
         is_opened_section = False

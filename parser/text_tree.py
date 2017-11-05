@@ -89,14 +89,15 @@ def build_tree(tags: list):
     """
     Building tree using list of tags.
 
-    :param tags: list of tuples where each element has structure (1 or 0, 1 or 0, Tag)
+    :param tags: list of tuples where each element is a tuple where first element - bit flag, second - Tag
     :return: TextTree object
     """
-
-    tree = TextTree(0, len(tags), None)
+    
+    tags_size = len(tags)
+    tree = TextTree(0, tags_size, None)
     current = tree
 
-    i, tags_size = 0, len(tags)
+    i = 0
     while i < tags_size:
         bit_flag, curr_tag = tags[i]
         if curr_tag:
