@@ -16,23 +16,23 @@ So here is __TODO__ list:
 
 5. Boost the scores!
 
-# `parser.py`
+# `file_parser.py`
 
-Parse your folder with data and create in directory where was runed folder `parsed_data` which has 2 folders - `clean` and `parsed`.
+Parse your folder with data and create in this folder (folder with your data) new directory `parsed_data` with  __txt__ which will store text with tags.
 
 Run example:
 
 ```bash
-python3 parser.py <data folder> <size of data>
+python3 file_parser.py <data folder> <size of data>
 ```
 
 Or more concrete example:
 
 ```bash
-python3 parser lawinsider_data 100
+python3 file_parser.py lawinsider_data 100
 ```
 
-After runing this you will have in `clean` and `parsed` folders with __100__ parsed __.txt__ files in them.
+After runing this you will have in `lawinsider_data` folder - `parsed_data` with __100__ parsed __.txt__ files in them.
 
 
 # Links
