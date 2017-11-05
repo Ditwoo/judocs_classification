@@ -108,8 +108,11 @@ def tag_positions(text: str) -> tuple:
 
     def prettify_tags(tags: list):
         """
-        Generate list of tuples where each element has structure:
-            (is opened tag on this line, is closed tag on this line, tag (Tag object))
+        Generate list of tuples where each element has structure of tuple where:
+
+        - first element is number where first bit (0 indexed) indicates that opened tag
+          and second bit indicates that closed tag
+        - second element is tag (Tag object)
 
         :param tags: list of rude parsed tags.
         :return:
@@ -117,25 +120,33 @@ def tag_positions(text: str) -> tuple:
 
         # list of tuples, which has structure like:
         # (is open tag (true - 1, false - 0), is closed tag (true - 1, false - 0), tag)
-        pretty = [(0, 0, '') for _ in tags]
+        pretty = [(0, '') for _ in tags]
         tag_pos, tags_size = 0, len(tags)
         is_opened_section = False
         while tag_pos < tags_size:
             tag, modifier = tags[tag_pos]
             if tag == 't':
-                pretty[tag_pos] = (1, 1, FileTags.TITLE)
+                # set open tag bit and close tag bit
+                bit_flags = (1 << 0) | (1 << 1)
+                pretty[tag_pos] = (bit_flags, FileTags.TITLE)
             elif tag == 'l':
-                pretty[tag_pos] = (1, 1, FileTags.LIST)
+                # set open tag bit and close tag bit
+                bit_flags = (1 << 0) | (1 << 1)
+                pretty[tag_pos] = (bit_flags, FileTags.LIST)
             elif tag == 's':
                 if is_opened_section:
-                    pretty[tag_pos - 1] = (0, 1, FileTags.SECTION)
-                pretty[tag_pos] = (1, 0, FileTags.SECTION)
+                    # close tag
+                    pretty[tag_pos - 1] = ((1 << 1), FileTags.SECTION)
+                # open tag
+                pretty[tag_pos] = ((1 << 0), FileTags.SECTION)
                 is_opened_section = not is_opened_section
             elif tag == 'p':
-                pretty[tag_pos] = (1, 1, FileTags.PLAIN_TEXT)
+                # set open tag bit and close tag bit
+                bit_flags = (1 << 0) | (1 << 1)
+                pretty[tag_pos] = (bit_flags, FileTags.PLAIN_TEXT)
             # case not closed section
             if tag_pos + 1 == tags_size and not is_opened_section:
-                pretty[tag_pos] = (0, 1, FileTags.SECTION)
+                pretty[tag_pos] = ((1 << 1), FileTags.SECTION)
             tag_pos += 1
         return pretty
 
@@ -182,11 +193,13 @@ def parse_raw_text(text: str) -> str:
 
     i, lines_size = 0, len(lines)
     while i < lines_size:
-        is_opened, is_closed, tag = text_tags[i]
+        bit_flags, tag = text_tags[i]
         if tag:
-            if is_opened:
+            # opened tag
+            if bit_flags & (1 << 0):
                 lines[i] = tag.op() + ' ' + lines[i]
-            if is_closed:
+            # closed tag
+            if bit_flags & (1 << 1):
                 lines[i] = lines[i].rstrip() + ' ' + tag.cl()
         i += 1
     return '\n'.join(lines)

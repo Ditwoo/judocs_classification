@@ -98,15 +98,15 @@ def build_tree(tags: list):
 
     i, tags_size = 0, len(tags)
     while i < tags_size:
-        is_opened, is_closed, curr_tag = tags[i]
+        bit_flag, curr_tag = tags[i]
         if curr_tag:
             # open tag
-            if is_opened:
+            if bit_flag & (1 << 0):
                 tmp = TextTree(start_pos=i, end_pos=i, tag=curr_tag, parent=current)
                 current.subtrees.append(tmp)
                 current = tmp
             # close tag
-            if is_closed:
+            if bit_flag & (1 << 1):
                 current.cl_pos = i
                 current = current.parent
         i += 1
