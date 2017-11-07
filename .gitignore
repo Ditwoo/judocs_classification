@@ -11,6 +11,5 @@ reader.py
 # files with extension or system files
 *.DS_Store
 *.idea
-*.txt
 *.docx
 *.html

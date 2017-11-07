@@ -18,21 +18,27 @@ So here is __TODO__ list:
 
 # `file_parser.py`
 
-Parse your folder with data and create in this folder (folder with your data) new directory `parsed_data` with  __txt__ which will store text with tags.
+Parse your folder with data and create in this folder (folder with your data) new directory `parsed_data` with  __.txt__ which will store text with tags.
 
-Run example:
-
-```bash
-python3 file_parser.py <data folder> <size of data>
-```
-
-Or more concrete example:
+Example:
 
 ```bash
-python3 file_parser.py lawinsider_data 100
+python3 file_parser.py --folder <data folder> --output <output folder>
 ```
 
-After runing this you will have in `lawinsider_data` folder - `parsed_data` with __100__ parsed __.txt__ files in them.
+`file_parser.py` paramenters:
+
+- `--folder` -- folder which will be parsed;
+
+- `--size` -- (__optional__) total amount of files in folder which will be parsed;
+
+- `--output` -- folder where will be stored tagged data;
+
+- `--file` -- (__optional__) file which will be parsed and parsing content will be printed to stdout;
+
+- `--color` -- (__optional__) enables color output to stdout;
+
+NOTE: there is no conflicts between paramenters `--file` and `--folder`
 
 
 # Links

@@ -1,5 +1,5 @@
 
-class BCOLORS:
+class TerminalTextFlags:
     HEADER = '\033[95m'
     OKBLUE = '\033[94m'
     OKGREEN = '\033[92m'
@@ -68,11 +68,11 @@ class FileTags:
             self.enable_colors()
 
     def enable_colors(self):
-        self.LIST.set_color(BCOLORS.OKGREEN + BCOLORS.UNDERLINE)
-        self.LIST_ITEM.set_color(BCOLORS.OKGREEN)
-        self.SECTION.set_color(BCOLORS.WARNING)
-        self.TITLE.set_color(BCOLORS.FAIL + BCOLORS.BOLD)
-        self.PLAIN_TEXT.set_color(BCOLORS.OKBLUE)
+        self.LIST.set_color(TerminalTextFlags.OKGREEN + TerminalTextFlags.UNDERLINE)
+        self.LIST_ITEM.set_color(TerminalTextFlags.OKGREEN)
+        self.SECTION.set_color(TerminalTextFlags.WARNING)
+        self.TITLE.set_color(TerminalTextFlags.FAIL + TerminalTextFlags.BOLD)
+        self.PLAIN_TEXT.set_color(TerminalTextFlags.OKBLUE)
 
     def disable_colors(self):
         self.LIST.disable_color()
