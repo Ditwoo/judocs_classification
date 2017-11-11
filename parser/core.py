@@ -33,15 +33,14 @@ LIST = re.compile(r"""^                        # beginning of the string
                       .*$                      # some text till the end
                       """, re.VERBOSE)
 SINGLE_NUMBER = re.compile(r"""^               # beginning of the string
-                                \s*            # whitespaces
-                                [\d\.\)]+      # number
-                                \s*            # whitespaces
-                                $""", re.VERBOSE)
+                               \s*             # whitespaces
+                               [\d\.\)]+       # number
+                               \s*             # whitespaces
+                               $""", re.VERBOSE)
 
-LIST_TYPES = [r'(\d+)\.?\)?',  # number
-              r'(\w+)\.?\)',   # chars
-              r'\((\w+)\)',    # chars
-              r'(•|-|\*)']     # special symbol
+LIST_TYPES = [r'(\d+)\.?\)?',                 # number
+              r'(\w+)\.?\)', r'\((\w+)\)',    # chars
+              r'(•|-|\*)']                    # special symbol
 
 
 def _list_type(list_string: str):
@@ -172,20 +171,21 @@ def tag_positions(text: str) -> tuple:
 
     text_lines = _normalize_lines(text.splitlines())
     lines_length = len(text_lines)
-    # first - type of tag, second - tag info
-    flags = [('', '') for _ in text_lines]
-    title_pos = 0
+    # first - bit marks of opening/closing tag, second - tag
+    flags = [(0, None) for _ in text_lines]
 
+
+    title_pos = 0
     # check that file has 'Exhibit' line
     if EXHIBIT.match(text_lines[title_pos]):
         title_pos += 1
         while EMPTY_LINE.match(text_lines[title_pos]):
             title_pos += 1
-        flags[title_pos] = ('t', '')
+        flags[title_pos] = ((1 << 0), FileTags.TITLE)
         title_pos += 1
     # check that first line of file has title
     elif TITLE.match(text_lines[title_pos]):
-        flags[title_pos] = ('t', '')
+        flags[title_pos] = ((1 << 0), FileTags.TITLE)
         title_pos += 1
 
     # searching another tags
@@ -195,11 +195,11 @@ def tag_positions(text: str) -> tuple:
         if EMPTY_LINE.match(line):
             continue
         elif SECTION.match(line) or EXACT_SECTION.match(line):
-            flags[i] = ('s', '')
+            flags[i] = ((1 << 0), FileTags.SECTION)
             continue
         elif LIST.match(line) and not SINGLE_NUMBER.match(line):
-            tmp = LIST.match(line).group(1)
-            flags[i] = ('l', tmp)
+            # set open tag bit and close tag bit
+            flags[i] = ((1 << 0) | (1 << 1), FileTags.LIST)
 
     # for i in range(1, lines_length - 1):
     #     flag, item_type = flags[i]
@@ -226,27 +226,28 @@ def tag_positions(text: str) -> tuple:
         :return: True if all sections is uppercase and False otherwise.
         """
         all_sections_uppercase = True
-        for i in range(len(lines)):
-            if tags[i][0] != 's':
+        for pos in range(len(lines)):
+            if tags[pos][1] != FileTags.SECTION:
                 continue
-            if not lines[i].isupper():
+            if not lines[pos].isupper():
                 all_sections_uppercase = False
                 break
         return all_sections_uppercase
 
     if not is_all_sections_uppercase(flags, text_lines):
         for i in range(title_pos, lines_length):
-            tag, info = flags[i]
+            info, tag = flags[i]
             line = text_lines[i]
-            if tag == 's' and line.isupper():
-                flags[i] = ('', '')
+            if tag == FileTags.SECTION and line.isupper():
+                flags[i] = (0, None)
 
+    # set not marked lines as plain text
     for i in range(lines_length):
         line = text_lines[i]
-        if len(line) == 0 or EMPTY_LINE.match(line) or flags[i][0] != '':
+        if EMPTY_LINE.match(line) or flags[i][1]:
             continue
         else:
-            flags[i] = ('p', '')
+            flags[i] = ((1 << 0) | (1 << 1), FileTags.PLAIN_TEXT)
 
     def prettify_tags(tags: list):
         """
@@ -261,40 +262,31 @@ def tag_positions(text: str) -> tuple:
         """
 
         # list of tuples, where each element has structure - (<bit flags>, <tag>)
-        pretty = [(0, '') for _ in tags]
         tag_pos, tags_size = 0, len(tags)
         is_opened_section, any_section = False, False
         while tag_pos < tags_size:
-            tag, modifier = tags[tag_pos]
-            if tag == 't':
-                # set open tag bit and close tag bit
-                bit_flags = (1 << 0) | (1 << 1)
-                pretty[tag_pos] = (bit_flags, FileTags.TITLE)
-            elif tag == 'l':
-                # set open tag bit and close tag bit
-                bit_flags = (1 << 0) | (1 << 1)
-                pretty[tag_pos] = (bit_flags, FileTags.LIST)
-            elif tag == 's':
+            modifier, tag = tags[tag_pos]
+            if tag == FileTags.SECTION:
                 if is_opened_section:
                     # close tag
-                    flag, tag = pretty[tag_pos - 1]
+                    flag, tag = tags[tag_pos - 1]
                     if tag == FileTags.SECTION:
-                        pretty[tag_pos - 1] = flag | (1 << 1), tag
+                        tags[tag_pos - 1] = flag | (1 << 1), tag
                 # open tag
-                pretty[tag_pos] = ((1 << 0), FileTags.SECTION)
+                tags[tag_pos] = ((1 << 0), FileTags.SECTION)
                 is_opened_section = not is_opened_section
                 any_section = True
             elif tag == 'p':
                 # set open tag bit and close tag bit
                 bit_flags = (1 << 0) | (1 << 1)
-                pretty[tag_pos] = (bit_flags, FileTags.PLAIN_TEXT)
+                tags[tag_pos] = (bit_flags, FileTags.PLAIN_TEXT)
             # case not closed section
             if tag_pos + 1 == tags_size and any_section and not is_opened_section:
-                pretty[tag_pos] = ((1 << 1), FileTags.SECTION)
+                tags[tag_pos] = ((1 << 1), FileTags.SECTION)
             tag_pos += 1
-        return pretty
 
-    return prettify_tags(flags), text_lines
+    prettify_tags(flags)
+    return flags, text_lines
 
 
 def generate_tree(text: str) -> TextTree:
