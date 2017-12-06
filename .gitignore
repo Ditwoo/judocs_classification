@@ -7,6 +7,8 @@ tests/*
 
 # files
 !data/new_headers.json
+!data/text_data.csv
+!data/all_sections_filtered.json
 
 # files with extension or system files
 *.DS_Store
